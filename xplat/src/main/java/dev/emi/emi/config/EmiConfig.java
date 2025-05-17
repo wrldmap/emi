@@ -47,10 +47,9 @@ public class EmiConfig {
 	@ConfigValue("general.enabled")
 	public static boolean enabled = true;
 
-	/** Use {@link dev.emi.emi.api.EmiApi#isCheatMode EmiApi.isCheatMode()} to get the boolean value. */
 	@Comment("Whether cheating in items is enabled.")
 	@ConfigValue("general.cheat-mode")
-	public static CheatMode cheatMode = CheatMode.CREATIVE;
+	public static boolean cheatMode = false;
 
 	@Comment("How much EMI should use tooltips and popups to show controls and information.")
 	@ConfigValue("general.help-level")
@@ -363,9 +362,9 @@ public class EmiConfig {
 	@ConfigValue("binds.clear-search")
 	public static EmiBind clearSearch = new EmiBind("key.emi.clear_search", InputUtil.UNKNOWN_KEY.getCode());
 
-	@Comment("Display all recipes in the game.")
-	@ConfigValue("binds.display-all-recipes")
-	public static EmiBind displayAllRecipes = new EmiBind("key.emi.display_all_recipes", EmiInput.CONTROL_MASK, GLFW.GLFW_KEY_Y);
+	@Comment("Add current search as a Bookmark")
+	@ConfigValue("binds.add-bookmark")
+	public static EmiBind addBookmark = new EmiBind("key.emi.add_bookmark", EmiInput.CONTROL_MASK, GLFW.GLFW_KEY_ENTER);
 
 	@Comment("Display the recipes for creating a stack.")
 	@ConfigValue("binds.view-recipes")

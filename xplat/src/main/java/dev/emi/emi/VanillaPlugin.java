@@ -41,14 +41,7 @@ import dev.emi.emi.api.recipe.EmiRecipeSorting;
 import dev.emi.emi.api.recipe.EmiWorldInteractionRecipe;
 import dev.emi.emi.api.render.EmiRenderable;
 import dev.emi.emi.api.render.EmiTexture;
-import dev.emi.emi.api.stack.Comparison;
-import dev.emi.emi.api.stack.EmiIngredient;
-import dev.emi.emi.api.stack.EmiRegistryAdapter;
-import dev.emi.emi.api.stack.EmiStack;
-import dev.emi.emi.api.stack.FluidEmiStack;
-import dev.emi.emi.api.stack.ItemEmiStack;
-import dev.emi.emi.api.stack.ListEmiIngredient;
-import dev.emi.emi.api.stack.TagEmiIngredient;
+import dev.emi.emi.api.stack.*;
 import dev.emi.emi.api.widget.Bounds;
 import dev.emi.emi.api.widget.GeneratedSlotWidget;
 import dev.emi.emi.config.EffectLocation;
@@ -95,12 +88,7 @@ import dev.emi.emi.registry.EmiTags;
 import dev.emi.emi.runtime.EmiDrawContext;
 import dev.emi.emi.runtime.EmiLog;
 import dev.emi.emi.runtime.EmiReloadLog;
-import dev.emi.emi.runtime.EmiTagKey;
-import dev.emi.emi.runtime.ProxyRecipeManager;
-import dev.emi.emi.stack.serializer.FluidEmiStackSerializer;
-import dev.emi.emi.stack.serializer.ItemEmiStackSerializer;
-import dev.emi.emi.stack.serializer.ListEmiIngredientSerializer;
-import dev.emi.emi.stack.serializer.TagEmiIngredientSerializer;
+import dev.emi.emi.stack.serializer.*;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
@@ -216,6 +204,7 @@ public class VanillaPlugin implements EmiPlugin {
 		registry.addIngredientSerializer(FluidEmiStack.class, new FluidEmiStackSerializer());
 		registry.addIngredientSerializer(TagEmiIngredient.class, new TagEmiIngredientSerializer());
 		registry.addIngredientSerializer(ListEmiIngredient.class, new ListEmiIngredientSerializer());
+		registry.addIngredientSerializer(SearchEmiIngredient.class, new SearchEmiIngredientSerializer());
 
 		registry.addRegistryAdapter(EmiRegistryAdapter.simple(Item.class, EmiPort.getItemRegistry(), EmiStack::of));
 		registry.addRegistryAdapter(EmiRegistryAdapter.simple(Fluid.class, EmiPort.getFluidRegistry(), EmiStack::of));
@@ -332,14 +321,14 @@ public class VanillaPlugin implements EmiPlugin {
 		registry.setDefaultComparison(Items.ENCHANTED_BOOK, EmiPort.compareStrict());
 
 		Set<Item> hiddenItems = Stream.concat(
-			EmiTagKey.of(EmiPort.getItemRegistry(), EmiTags.HIDDEN_FROM_RECIPE_VIEWERS).stream(),
+			EmiUtil.values(TagKey.of(EmiPort.getItemRegistry().getKey(), EmiTags.HIDDEN_FROM_RECIPE_VIEWERS)).map(RegistryEntry::value),
 			EmiPort.getDisabledItems()
 		).collect(Collectors.toSet());
 
 		List<Item> dyeableItems = EmiPort.getItemRegistry().stream().filter(i -> i instanceof DyeableItem).collect(Collectors.toList());
 
 		for (CraftingRecipe recipe : getRecipes(registry, RecipeType.CRAFTING)) {
-			Identifier id = ProxyRecipeManager.getId(recipe);
+			Identifier id = EmiPort.getId(recipe);
 			if (recipe instanceof MapExtendingRecipe map) {
 				EmiStack paper = EmiStack.of(Items.PAPER);
 				addRecipeSafe(registry, () -> new EmiCraftingRecipe(List.of(
@@ -453,7 +442,7 @@ public class VanillaPlugin implements EmiPlugin {
 			MinecraftClient client = MinecraftClient.getInstance();
 			if (recipe instanceof SmithingTransformRecipeAccessor stra) {
 				addRecipeSafe(registry, () -> new EmiSmithingRecipe(EmiIngredient.of(stra.getTemplate()), EmiIngredient.of(stra.getBase()),
-					EmiIngredient.of(stra.getAddition()), EmiStack.of(EmiPort.getOutput(recipe)), ProxyRecipeManager.getId(recipe)), recipe);
+					EmiIngredient.of(stra.getAddition()), EmiStack.of(EmiPort.getOutput(recipe)), EmiPort.getId(recipe)), recipe);
 			} else if (recipe instanceof SmithingTrimRecipeAccessor stra) {
 				addRecipeSafe(registry, () -> new EmiSmithingTrimRecipe(EmiIngredient.of(stra.getTemplate()), EmiIngredient.of(stra.getBase()),
 					EmiIngredient.of(stra.getAddition()), EmiStack.of(EmiPort.getOutput(recipe)), recipe), recipe);
@@ -469,9 +458,9 @@ public class VanillaPlugin implements EmiPlugin {
 		safely("fuel", () -> addFuel(registry, hiddenItems));
 		safely("composting", () -> addComposting(registry, hiddenItems));
 
-		for (EmiTagKey<?> key : EmiTags.TAGS) {
-			if (new TagEmiIngredient(key.raw(), 1).getEmiStacks().size() > 1) {
-				addRecipeSafe(registry, () -> new EmiTagRecipe(key.raw()));
+		for (TagKey<?> key : EmiTags.TAGS) {
+			if (new TagEmiIngredient(key, 1).getEmiStacks().size() > 1) {
+				addRecipeSafe(registry, () -> new EmiTagRecipe(key));
 			}
 		}
 	}
@@ -521,9 +510,7 @@ public class VanillaPlugin implements EmiPlugin {
 						synthetic("anvil/enchanting", EmiUtil.subId(i) + "/" + EmiUtil.subId(EmiPort.getEnchantmentRegistry().getId(e)) + "/" + max)));
 				};
 				for (Enchantment e : targetedEnchantments) {
-					if (e.isAcceptableItem(defaultStack) && defaultStack.isEnchantable()
-							&& defaultStack.getItem().isEnchantable(defaultStack)
-							&& EmiAgnos.isEnchantable(defaultStack, e)) {
+					if (e.isAcceptableItem(defaultStack)) {
 						consumer.accept(e);
 						acceptableEnchantments++;
 					}
@@ -758,7 +745,7 @@ public class VanillaPlugin implements EmiPlugin {
 		compressRecipesToTags(fuelMap.keySet().stream().collect(Collectors.toSet()), (a, b) -> {
 				return Integer.compare(fuelMap.get(a), fuelMap.get(b));
 			}, tag -> {
-				EmiIngredient stack = EmiIngredient.of(tag.raw());
+				EmiIngredient stack = EmiIngredient.of(tag);
 				Item item = stack.getEmiStacks().get(0).getItemStack().getItem();
 				int time = fuelMap.get(item);
 				registry.addRecipe(new EmiFuelRecipe(stack, time, synthetic("fuel/tag", EmiUtil.subId(tag.id()))));
@@ -775,7 +762,7 @@ public class VanillaPlugin implements EmiPlugin {
 			.map(ItemConvertible::asItem).collect(Collectors.toSet()), (a, b) -> {
 				return Float.compare(ComposterBlock.ITEM_TO_LEVEL_INCREASE_CHANCE.getFloat(a), ComposterBlock.ITEM_TO_LEVEL_INCREASE_CHANCE.getFloat(b));
 			}, tag -> {
-				EmiIngredient stack = EmiIngredient.of(tag.raw());
+				EmiIngredient stack = EmiIngredient.of(tag);
 				Item item = stack.getEmiStacks().get(0).getItemStack().getItem();
 				float chance = ComposterBlock.ITEM_TO_LEVEL_INCREASE_CHANCE.getFloat(item);
 				registry.addRecipe(new EmiCompostingRecipe(stack, chance, synthetic("composting/tag", EmiUtil.subId(tag.id()))));
@@ -787,11 +774,11 @@ public class VanillaPlugin implements EmiPlugin {
 			});
 	}
 
-	private static void compressRecipesToTags(Set<Item> stacks, Comparator<Item> comparator, Consumer<EmiTagKey<Item>> tagConsumer, Consumer<Item> itemConsumer) {
+	private static void compressRecipesToTags(Set<Item> stacks, Comparator<Item> comparator, Consumer<TagKey<Item>> tagConsumer, Consumer<Item> itemConsumer) {
 		Set<Item> handled = Sets.newHashSet();
 		outer:
-		for (EmiTagKey<Item> key : EmiTags.getTags(EmiPort.getItemRegistry())) {
-			List<Item> items = key.getList();
+		for (TagKey<Item> key : EmiTags.getTags(EmiPort.getItemRegistry())) {
+			List<Item> items = EmiUtil.values(key).map(RegistryEntry::value).toList();
 			if (items.size() < 2) {
 				continue;
 			}
@@ -847,7 +834,7 @@ public class VanillaPlugin implements EmiPlugin {
 		try {
 			registry.addRecipe(supplier.get());
 		} catch (Throwable e) {
-			EmiReloadLog.warn("Exception thrown when parsing vanilla recipe " + ProxyRecipeManager.getId(recipe), e);
+			EmiReloadLog.warn("Exception thrown when parsing vanilla recipe " + EmiPort.getId(recipe), e);
 		}
 	}
 

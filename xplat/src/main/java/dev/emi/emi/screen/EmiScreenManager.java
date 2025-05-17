@@ -7,6 +7,9 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import dev.emi.emi.api.stack.SearchEmiIngredient;
+import dev.emi.emi.runtime.*;
+import net.minecraft.client.util.math.MatrixStack;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
@@ -43,6 +46,7 @@ import dev.emi.emi.config.SidebarSubpanels;
 import dev.emi.emi.config.SidebarTheme;
 import dev.emi.emi.config.SidebarType;
 import dev.emi.emi.input.EmiBind;
+import dev.emi.emi.input.EmiInput;
 import dev.emi.emi.mixin.accessor.HandledScreenAccessor;
 import dev.emi.emi.network.CreateItemC2SPacket;
 import dev.emi.emi.network.EmiNetwork;
@@ -52,16 +56,6 @@ import dev.emi.emi.registry.EmiExclusionAreas;
 import dev.emi.emi.registry.EmiRecipeFiller;
 import dev.emi.emi.registry.EmiRecipes;
 import dev.emi.emi.registry.EmiStackProviders;
-import dev.emi.emi.runtime.EmiDrawContext;
-import dev.emi.emi.runtime.EmiFavorite;
-import dev.emi.emi.runtime.EmiFavorites;
-import dev.emi.emi.runtime.EmiHidden;
-import dev.emi.emi.runtime.EmiHistory;
-import dev.emi.emi.runtime.EmiLog;
-import dev.emi.emi.runtime.EmiProfiler;
-import dev.emi.emi.runtime.EmiReloadLog;
-import dev.emi.emi.runtime.EmiReloadManager;
-import dev.emi.emi.runtime.EmiSidebars;
 import dev.emi.emi.screen.tooltip.RecipeTooltipComponent;
 import dev.emi.emi.screen.widget.EmiSearchWidget;
 import dev.emi.emi.screen.widget.SidebarButtonWidget;
@@ -76,11 +70,11 @@ import net.minecraft.client.gui.screen.ingame.CreativeInventoryScreen;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.gui.tooltip.TooltipComponent;
 import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.command.argument.ItemStackArgument;
+import net.minecraft.client.sound.PositionedSoundInstance;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.screen.slot.Slot;
+import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
@@ -663,7 +657,7 @@ public class EmiScreenManager {
 		renderSlotOverlays(context, mouseX, mouseY, delta, base);
 		EmiProfiler.pop();
 
-		context.disableDepthTest();
+		RenderSystem.disableDepthTest();
 	}
 
 	public static void drawForeground(EmiDrawContext context, int mouseX, int mouseY, float delta) {
@@ -745,7 +739,7 @@ public class EmiScreenManager {
 				cursor = handled.getScreenHandler().getCursorStack();
 			}
 			ScreenSpace space = getHoveredSpace(mouseX, mouseY);
-			if (EmiApi.isCheatMode() && !cursor.isEmpty() && space != null && space.getType() == SidebarType.INDEX && EmiConfig.deleteCursorStack.isBound()) {
+			if (EmiConfig.cheatMode && !cursor.isEmpty() && space != null && space.getType() == SidebarType.INDEX && EmiConfig.deleteCursorStack.isBound()) {
 				List<TooltipComponent> list = List.of(
 					TooltipComponent.of(EmiPort.ordered(EmiPort.translatable("emi.delete_stack"))),
 					TooltipComponent.of(EmiPort.ordered(EmiConfig.deleteCursorStack.getBindText()))
@@ -878,7 +872,7 @@ public class EmiScreenManager {
 		}
 		if (base.screen() instanceof HandledScreen<?> hs && hs instanceof HandledScreenAccessor hsa) {
 			context.push();
-			context.translate(hsa.getX(), hsa.getY());
+			context.matrices().translate(hsa.getX(), hsa.getY(), 0);
 			for (Slot slot : hs.getScreenHandler().slots) {
 				if (!slot.isEnabled()) {
 					continue;
@@ -1029,7 +1023,7 @@ public class EmiScreenManager {
 			int mx = (int) mouseX;
 			int my = (int) mouseY;
 			recalculate();
-			if (EmiApi.isCheatMode() && EmiConfig.deleteCursorStack.matchesMouse(button)) {
+			if (EmiConfig.cheatMode && EmiConfig.deleteCursorStack.matchesMouse(button)) {
 				if (deleteCursor(mx, my)) {
 					// Returning false here makes the handled screen do something and removes a bug, oh well.
 					return false;
@@ -1066,6 +1060,21 @@ public class EmiScreenManager {
 					}
 				} else {
 					EmiStackInteraction hovered = getHoveredStack((int) mouseX, (int) mouseY, !isClickClicky(button));
+
+					if (panel != null) {
+						ScreenSpace space = panel.getHoveredSpace(mx, my);
+						if (space != null && space.getType() == SidebarType.BOOKMARKS && pressedStack instanceof SearchEmiIngredient bookmark) {
+							if (button == 1) {
+								EmiBookmarks.removeBookmark(bookmark);
+							} else if (bookmark.getContent() != null) {
+								EmiApi.setSearchText(bookmark.getContent());
+								EmiPort.focus(search, true);
+							}
+
+							return true;
+						}
+					}
+
 					if (draggedStack.isEmpty() && stackInteraction(hovered, bind -> bind.matchesMouse(button))) {
 						return true;
 					}
@@ -1122,12 +1131,12 @@ public class EmiScreenManager {
 		if (hasFocusedTextField(client.currentScreen, 10)) {
 			return false;
 		}
-		if (EmiApi.isCheatMode() && EmiConfig.deleteCursorStack.matchesKey(keyCode, scanCode)) {
+		if (EmiConfig.cheatMode && EmiConfig.deleteCursorStack.matchesKey(keyCode, scanCode)) {
 			if (deleteCursor(lastMouseX, lastMouseY)) {
 				return true;
 			}
 		}
-		if (EmiConfig.displayAllRecipes.matchesKey(keyCode, scanCode)) {
+		if (EmiInput.isControlDown() && keyCode == GLFW.GLFW_KEY_Y) {
 			EmiApi.displayAllRecipes();
 			return true;
 		} else {
@@ -1212,7 +1221,7 @@ public class EmiScreenManager {
 			if (craftInteraction(ingredient, () -> context, stack, function)) {
 				return true;
 			}
-			if (EmiApi.isCheatMode()) {
+			if (EmiConfig.cheatMode) {
 				if (ingredient.getEmiStacks().size() == 1 && stack instanceof SidebarEmiStackInteraction) {
 					if (function.apply(EmiConfig.cheatOneToInventory)) {
 						return give(ingredient.getEmiStacks().get(0), 1, 0);
@@ -1306,7 +1315,8 @@ public class EmiScreenManager {
 					amount = Math.min(amount, batches);
 				}
 				if (EmiRecipeFiller.performFill(context, EmiApi.getHandledScreen(), EmiCraftContext.Type.CRAFTABLE, destination, amount)) {
-					EmiPort.playClickSound();
+					MinecraftClient.getInstance().getSoundManager()
+							.play(PositionedSoundInstance.master(SoundEvents.UI_BUTTON_CLICK, 1.0f));
 					return true;
 				}
 			}
@@ -1323,7 +1333,7 @@ public class EmiScreenManager {
 			repopulatePanels(SidebarType.FAVORITES);
 			return true;
 		} else if (function.apply(EmiConfig.copyId)) {
-			EmiPort.playClickSound();
+			MinecraftClient.getInstance().getSoundManager().play(PositionedSoundInstance.master(SoundEvents.UI_BUTTON_CLICK, 1.0f));
 			client.keyboard.setClipboard("" + recipe.getId());
 			return true;
 		}
@@ -1531,7 +1541,7 @@ public class EmiScreenManager {
 					}
 				}
 				if (isVisible()) {
-					context.enableDepthTest();
+					RenderSystem.enableDepthTest();
 					context.resetColor();
 					int headerOffset = header ? 18 : 0;
 					if (theme == SidebarTheme.VANILLA) {
@@ -1544,13 +1554,13 @@ public class EmiScreenManager {
 					} else if (theme == SidebarTheme.MODERN) {
 						int offset = 2;
 						for (ScreenSpace space : getSpaces()) {
-							context.enableBlend();
+							RenderSystem.enableBlend();
 							context.drawTexture(EmiRenderHelper.GRID, space.tx, space.ty, space.tw * ENTRY_SIZE,
 								space.th * ENTRY_SIZE, 0, 0, space.tw, space.th, 2, offset);
 							if (space.th % 2 == 1) {
 								offset *= -1;
 							}
-							context.disableBlend();
+							RenderSystem.disableBlend();
 						}
 					}
 					for (ScreenSpace space : getSpaces()) {
@@ -1753,7 +1763,7 @@ public class EmiScreenManager {
 
 		public void render(EmiDrawContext context, int mouseX, int mouseY, float delta, int startIndex) {
 			if (this.pageSize > 0) {
-				context.enableDepthTest();
+				RenderSystem.enableDepthTest();
 				EmiPort.setPositionTexShader();
 				context.setColor(1.0F, 1.0F, 1.0F, 1.0F);
 				int hx = -1, hy = -1;
@@ -1778,10 +1788,10 @@ public class EmiScreenManager {
 						batcher.render(stack, context.raw(), cx + 1, cy + 1, delta);
 						if (getType() == SidebarType.INDEX) {
 							if (EmiConfig.editMode && EmiHidden.isHidden(stack)) {
-								context.enableDepthTest();
+								RenderSystem.enableDepthTest();
 								context.fill(cx, cy, ENTRY_SIZE, ENTRY_SIZE, 0x33ff0000);
 							} else if (EmiConfig.highlightDefaulted && BoM.getRecipe(stack) != null) {
-								context.enableDepthTest();
+								RenderSystem.enableDepthTest();
 								context.fill(cx, cy, ENTRY_SIZE, ENTRY_SIZE, 0x3300ff00);
 							}
 						}
