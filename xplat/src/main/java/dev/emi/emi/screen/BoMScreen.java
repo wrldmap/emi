@@ -573,10 +573,9 @@ public class BoMScreen extends Screen {
 		}
 
 		if (EmiConfig.addTreeBookmark.matchesKey(keyCode, scanCode)) {
-			String suggested = EmiTreeBookmarks.suggestName(BoM.getTrees(), BoM.treeIndex, BoM.craftingMode);
-			MinecraftClient.getInstance().setScreen(new TreeBookmarkNameScreen(this, suggested, name ->
-				EmiTreeBookmarks.addBookmark(BoM.getTrees(), BoM.treeIndex, BoM.craftingMode, name)));
-			return true;
+			if (TreeBookmarkNameScreen.openCurrentTreeBookmark(this)) {
+				return true;
+			}
 		}
 		if (EmiInput.isAltDown() != altDown) {
 			altDown = EmiInput.isAltDown();
