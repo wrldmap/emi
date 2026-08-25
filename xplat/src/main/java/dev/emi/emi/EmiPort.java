@@ -185,6 +185,10 @@ public final class EmiPort {
 		return getItemRegistry().stream().filter(i -> !i.isEnabled(fs));
 	}
 
+	public static Identifier getId(Recipe<?> recipe) {
+		return recipe.getId();
+	}
+
 	public static Comparison compareStrict() {
 		return Comparison.compareNbt();
 	}

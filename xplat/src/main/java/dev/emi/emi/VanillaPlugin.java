@@ -88,6 +88,7 @@ import dev.emi.emi.registry.EmiTags;
 import dev.emi.emi.runtime.EmiDrawContext;
 import dev.emi.emi.runtime.EmiLog;
 import dev.emi.emi.runtime.EmiReloadLog;
+import dev.emi.emi.runtime.EmiTagKey;
 import dev.emi.emi.stack.serializer.*;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
@@ -321,8 +322,8 @@ public class VanillaPlugin implements EmiPlugin {
 		registry.setDefaultComparison(Items.ENCHANTED_BOOK, EmiPort.compareStrict());
 
 		Set<Item> hiddenItems = Stream.concat(
-			EmiUtil.values(TagKey.of(EmiPort.getItemRegistry().getKey(), EmiTags.HIDDEN_FROM_RECIPE_VIEWERS)).map(RegistryEntry::value),
-			EmiPort.getDisabledItems()
+				EmiUtil.values(TagKey.of(EmiPort.getItemRegistry().getKey(), EmiTags.HIDDEN_FROM_RECIPE_VIEWERS)).map(RegistryEntry::value),
+				EmiPort.getDisabledItems()
 		).collect(Collectors.toSet());
 
 		List<Item> dyeableItems = EmiPort.getItemRegistry().stream().filter(i -> i instanceof DyeableItem).collect(Collectors.toList());
@@ -458,9 +459,9 @@ public class VanillaPlugin implements EmiPlugin {
 		safely("fuel", () -> addFuel(registry, hiddenItems));
 		safely("composting", () -> addComposting(registry, hiddenItems));
 
-		for (TagKey<?> key : EmiTags.TAGS) {
+		for (EmiTagKey<?> key : EmiTags.TAGS) {
 			if (new TagEmiIngredient(key, 1).getEmiStacks().size() > 1) {
-				addRecipeSafe(registry, () -> new EmiTagRecipe(key));
+				addRecipeSafe(registry, () -> new EmiTagRecipe(key.raw()));
 			}
 		}
 	}
@@ -777,8 +778,8 @@ public class VanillaPlugin implements EmiPlugin {
 	private static void compressRecipesToTags(Set<Item> stacks, Comparator<Item> comparator, Consumer<TagKey<Item>> tagConsumer, Consumer<Item> itemConsumer) {
 		Set<Item> handled = Sets.newHashSet();
 		outer:
-		for (TagKey<Item> key : EmiTags.getTags(EmiPort.getItemRegistry())) {
-			List<Item> items = EmiUtil.values(key).map(RegistryEntry::value).toList();
+		for (EmiTagKey<Item> key : EmiTags.getTags(EmiPort.getItemRegistry())) {
+			List<Item> items = EmiUtil.values(key.raw()).map(RegistryEntry::value).toList();
 			if (items.size() < 2) {
 				continue;
 			}
@@ -796,7 +797,7 @@ public class VanillaPlugin implements EmiPlugin {
 				continue;
 			}
 			handled.addAll(items);
-			tagConsumer.accept(key);
+			tagConsumer.accept(key.raw());
 		}
 		for (Item item : stacks) {
 			if (handled.contains(item)) {

@@ -4,7 +4,9 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
+import java.util.stream.Stream;
 
 import dev.emi.emi.api.EmiApi;
 import dev.emi.emi.api.recipe.EmiPlayerInventory;
@@ -27,6 +29,10 @@ import net.minecraft.inventory.CraftingInventory;
 import net.minecraft.inventory.Inventory;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.registry.Registry;
+import net.minecraft.registry.entry.RegistryEntry;
+import net.minecraft.registry.entry.RegistryEntryList;
+import net.minecraft.registry.tag.TagKey;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.util.Identifier;
 
@@ -47,6 +53,23 @@ public class EmiUtil {
 
 	public static String subId(Fluid fluid) {
 		return subId(EmiPort.getFluidRegistry().getId(fluid));
+	}
+
+	public static <T> Stream<RegistryEntry<T>> values(TagKey<T> key) {
+		MinecraftClient client = MinecraftClient.getInstance();
+		Registry<T> registry = client.world.getRegistryManager().get(key.registry());
+		Optional<RegistryEntryList.Named<T>> opt = registry.getEntryList(key);
+		if (opt.isEmpty()) {
+			return Stream.of();
+		} else {
+			if (registry == EmiPort.getFluidRegistry()) {
+				return opt.get().stream().filter(o -> {
+					Fluid f = (Fluid) o.value();
+					return f.isStill(f.getDefaultState());
+				});
+			}
+			return opt.get().stream();
+		}
 	}
 
 	public static boolean showAdvancedTooltips() {
