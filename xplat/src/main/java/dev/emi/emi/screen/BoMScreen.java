@@ -1,5 +1,6 @@
 package dev.emi.emi.screen;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
@@ -434,7 +435,7 @@ public class BoMScreen extends Screen {
 			List<TooltipComponent> list = EmiTooltip.splitTranslate(key, tree.batches);
 			EmiRenderHelper.drawTooltip(this, context, list, mouseX, mouseY);
 		} else if (help.contains(mouseX, mouseY)) {
-			List<TooltipComponent> list =  EmiTooltip.splitTranslate("tooltip.emi.bom.help");
+			List<TooltipComponent> list = Collections.singletonList(TooltipComponent.of(EmiPort.ordered(EmiPort.translatable("tooltip.emi.bom.help", EmiConfig.addTreeBookmark.getBindText()))));
 			EmiRenderHelper.drawTooltip(this, context, list, width - 18, height - 18, width);
 		}
 	}
